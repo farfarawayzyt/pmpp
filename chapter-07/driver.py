@@ -1,3 +1,4 @@
+import os
 import argparse
 import ctypes
 
@@ -6,11 +7,13 @@ from numpy.ctypeslib import ndpointer
 
 from PIL import Image
 
+script_dir = os.path.dirname(__file__)
+
 def GetArgs():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', type=str, default='/home/zyt/my-codes/cuda/pmpp/chapter-07/inputs/sjl.jpg')
-    parser.add_argument('--kernel', type=str, default='naive')
+    parser.add_argument('--input', type=str, default=f'{script_dir}/inputs/sjl.jpg')
+    # parser.add_argument('--kernel', type=str, default='naive')
     parser.add_argument('--radius', type=int, default=7)
     parser.add_argument('--sigma', type=float, default=3.0)
 
@@ -18,7 +21,7 @@ def GetArgs():
 
     return args
 
-def GetDispatchFunc(libPath: str = '/home/zyt/my-codes/cuda/pmpp/build/chapter-07/libgaussian-blur.so'):
+def GetDispatchFunc(libPath: str = f'{script_dir}/../build/chapter-07/libgaussian-blur.so'):
     module = ctypes.cdll.LoadLibrary(libPath)
     dispatchFunction = getattr(module, 'dispatch')
     dispatchFunction.argtypes = [
@@ -55,14 +58,16 @@ if __name__ == '__main__':
     arr = np.array(img, dtype=np.uint8)
     height, width, __ = arr.shape
 
-    x = dispatchFunc(
-        args.kernel.encode('ascii'),
-        np.empty_like(arr),
+    cpu_result = np.empty_like(arr)
+    cpu_elasped = dispatchFunc(
+        'cpu'.encode('ascii'),
+        cpu_result,
         arr,
         height,
         width,
         weights,
         args.radius
     )
-
-    print(x)
+    cpu_img = Image.fromarray(cpu_result)
+    cpu_img.save(f'{script_dir}/outputs/cpuNaive.jpg')
+    print(f'cpu saved, process time: {cpu_elasped}s')
