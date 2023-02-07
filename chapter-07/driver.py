@@ -1,6 +1,7 @@
 import os
 import argparse
 import ctypes
+from time import perf_counter
 
 import numpy as np
 from numpy.ctypeslib import ndpointer
@@ -72,12 +73,14 @@ if __name__ == '__main__':
     # cpu_img.save(f'{script_dir}/outputs/cpuNaive.jpg')
     # print(f'cpu saved, process time: {cpu_elasped}s')
 
-    def GetGpuResult(kernelName: str):
+    def RunGpu(kernelName: str):
         gpu_result = np.empty_like(arr)
+        start = perf_counter()
         gpu_elasped = dispatchFunc(kernelName.encode('ascii'), gpu_result, arr, height, width, weights, args.radius)
-        return gpu_result, gpu_elasped
+        stop = perf_counter()
+        gpu_img = Image.fromarray(gpu_result)
+        gpu_img.save(f'{script_dir}/outputs/gpu_{kernelName}.jpg')
+        print(f'kernelName: {kernelName}\nsaved into "outputs/gpu_{kernelName}.jpg", kernel: {gpu_elasped}s, e2e: {stop-start}s')
 
-    naive_result, naive_elasped = GetGpuResult('naive')
-    naive_img = Image.fromarray(naive_result)
-    naive_img.save(f'{script_dir}/outputs/gpuNaive.jpg')
-    print(f'gpu naive saved, process time: {naive_elasped}s')
+    RunGpu('const_cache')
+    RunGpu('naive')
