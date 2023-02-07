@@ -15,7 +15,7 @@ def GetArgs():
     parser.add_argument('--input', type=str, default=f'{script_dir}/inputs/sjl.jpg')
     # parser.add_argument('--kernel', type=str, default='naive')
     parser.add_argument('--radius', type=int, default=7)
-    parser.add_argument('--sigma', type=float, default=3.0)
+    parser.add_argument('--sigma', type=float, default=10.0)
 
     args = parser.parse_args()
 
@@ -58,16 +58,26 @@ if __name__ == '__main__':
     arr = np.array(img, dtype=np.uint8)
     height, width, __ = arr.shape
 
-    cpu_result = np.empty_like(arr)
-    cpu_elasped = dispatchFunc(
-        'cpu'.encode('ascii'),
-        cpu_result,
-        arr,
-        height,
-        width,
-        weights,
-        args.radius
-    )
-    cpu_img = Image.fromarray(cpu_result)
-    cpu_img.save(f'{script_dir}/outputs/cpuNaive.jpg')
-    print(f'cpu saved, process time: {cpu_elasped}s')
+    # cpu_result = np.empty_like(arr)
+    # cpu_elasped = dispatchFunc(
+    #     'cpu'.encode('ascii'),
+    #     cpu_result,
+    #     arr,
+    #     height,
+    #     width,
+    #     weights,
+    #     args.radius
+    # )
+    # cpu_img = Image.fromarray(cpu_result)
+    # cpu_img.save(f'{script_dir}/outputs/cpuNaive.jpg')
+    # print(f'cpu saved, process time: {cpu_elasped}s')
+
+    def GetGpuResult(kernelName: str):
+        gpu_result = np.empty_like(arr)
+        gpu_elasped = dispatchFunc(kernelName.encode('ascii'), gpu_result, arr, height, width, weights, args.radius)
+        return gpu_result, gpu_elasped
+
+    naive_result, naive_elasped = GetGpuResult('naive')
+    naive_img = Image.fromarray(naive_result)
+    naive_img.save(f'{script_dir}/outputs/gpuNaive.jpg')
+    print(f'gpu naive saved, process time: {naive_elasped}s')
