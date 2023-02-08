@@ -80,7 +80,8 @@ if __name__ == '__main__':
         stop = perf_counter()
         gpu_img = Image.fromarray(gpu_result)
         gpu_img.save(f'{script_dir}/outputs/gpu_{kernelName}.jpg')
-        print(f'kernelName: {kernelName}\nsaved into "outputs/gpu_{kernelName}.jpg", kernel: {gpu_elasped}s, e2e: {stop-start}s')
+        print(f'kernelName: {kernelName}\nsaved into "outputs/gpu_{kernelName}.jpg", kernel: {gpu_elasped * 1000}ms, e2e: {(stop-start) * 1000}ms')
 
-    RunGpu('const_cache')
     RunGpu('naive')
+    RunGpu('const_cache')
+    RunGpu('shared')

@@ -63,9 +63,81 @@ __global__ void constCacheKernel(uint8_t *output, const uint8_t *input, uint32_t
   }
 }
 
+__global__ void sharedMemKernel(uint8_t *output, const uint8_t *input, uint32_t height, uint32_t width, uint32_t radius){
+  extern __shared__ uint8_t inputTile[];
+
+  const int32_t copyBeginY = blockIdx.y * blockDim.y - radius;
+  const int32_t copyBeginX = blockIdx.x * blockDim.x - radius;
+
+  const uint32_t inputTileHeight = 2 * radius + blockDim.y;
+  const uint32_t inputTileWidth = 2 * radius + blockDim.x;
+  const uint32_t inputTileArea = inputTileHeight * inputTileWidth;
+  const uint32_t stride = blockDim.x * blockDim.y;
+
+  for (uint32_t i = 0; i < inputTileArea; i += stride){
+    const uint32_t copyLinearIdx = i + threadIdx.y * blockDim.x + threadIdx.x;
+
+    if (copyLinearIdx < inputTileArea){
+      const uint32_t copyDeltaY = copyLinearIdx / inputTileWidth;
+      const uint32_t copyDeltaX = copyLinearIdx % inputTileWidth;
+
+      const int32_t cy = copyBeginY + copyDeltaY;
+      const int32_t cx = copyBeginX + copyDeltaX;
+
+      if (0 <= cy && cy < height && 0 <= cx && cx < width){
+        const uint32_t cidx = 3 * (cy * width + cx);
+        inputTile[3 * copyLinearIdx] = input[cidx];
+        inputTile[3 * copyLinearIdx + 1] = input[cidx + 1];
+        inputTile[3 * copyLinearIdx + 2] = input[cidx + 2]; 
+      } else {
+        inputTile[3 * copyLinearIdx] = 0.0f;
+        inputTile[3 * copyLinearIdx + 1] = 0.0f;
+        inputTile[3 * copyLinearIdx + 2] = 0.0f;
+      }
+    }
+  }
+
+  __syncthreads();
+
+  const uint32_t oy = blockIdx.y * blockDim.y + threadIdx.y;
+  const uint32_t ox = blockIdx.x * blockDim.x + threadIdx.x;
+  const uint32_t oidx = 3 * (oy * width + ox);
+
+  // auto fprint = [oy, ox](int32_t dy, int32_t dx, uint32_t fy, uint32_t fx, uint32_t ty, uint32_t tx, uint32_t idx, float i){
+  //   if (oy == 1200 && ox == 500){
+  //     std::printf("%d, %d, %u, %u, %u, %u, %u, %f\n", dy, dx, fy, fx, ty, tx, idx, i);
+  //   }
+  // };
+
+  if (oy < height && ox < width){
+    float rgb[3] = {};
+    for (int32_t dy = -radius; dy <= (int32_t)radius; ++dy){
+      for (int32_t dx = -radius; dx <= (int32_t)radius; ++dx){
+        const uint32_t fy = dy + radius;
+        const uint32_t fx = dx + radius;
+        const uint32_t fidx = fy * (2 * radius + 1) + fx; 
+
+        const uint32_t ty = fy + threadIdx.y;
+        const uint32_t tx = fx + threadIdx.x;
+        const uint32_t tidx = 3 * (ty * inputTileWidth + tx);
+
+        for (uint32_t i = 0; i < 3; ++i){
+          rgb[i] += static_cast<float>(inputTile[tidx + i]) * weights_ccache[fidx];
+          // fprint(dy, dx, fy, fx, ty, tx, i, inputTile[tidx + i]);
+        }
+      }
+    }
+    
+    for (uint32_t i = 0; i < 3; ++i){
+      output[oidx + i] = static_cast<uint8_t>(rgb[i]);
+    }
+  }
+}
+
 enum class KernelType {
   Naive,
-  ConstCache
+  ConstCache,
+  SharedMem
 };
 
 template<bool CacheWeights, KernelType ktype>
@@ -103,6 +175,11 @@ double gpuCommon(uint8_t *output_h, const uint8_t *input_h, uint64_t height, uin
     dim3 BlockSize(16, 16);
     dim3 GridSize((width + 15) / 16, (height + 15) / 16);
     constCacheKernel<<<GridSize, BlockSize>>>(output_d, input_d, height, width, radius);
+  } else if constexpr(ktype == KernelType::SharedMem){
+    dim3 BlockSize(16, 16);
+    dim3 GridSize((width + 15) / 16, (height + 15) / 16);
+    const uint32_t sharedMemoryNbytes = 3 * (16 + 2 * radius) * (16 + 2 * radius);
+    sharedMemKernel<<<GridSize, BlockSize, sharedMemoryNbytes>>>(output_d, input_d, height, width, radius);
   }
 
   CHECK_CUDA_ERROR(cudaEventRecord(stop));
@@ -135,4 +212,8 @@ extern "C" {
   double gpuConstCache(uint8_t *output_h, const uint8_t *input_h, uint64_t height, uint64_t width, const float *weights_h, uint64_t radius){
     return gpuCommon<false, KernelType::ConstCache>(output_h, input_h, height, width, weights_h, radius) / 1000.0;
   } 
+
+  double gpuSharedMem(uint8_t *output_h, const uint8_t *input_h, uint64_t height, uint64_t width, const float *weights_h, uint64_t radius){
+    return gpuCommon<false, KernelType::SharedMem>(output_h, input_h, height, width, weights_h, radius) / 1000.0;
+  }
 }

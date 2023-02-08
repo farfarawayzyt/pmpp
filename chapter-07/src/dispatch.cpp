@@ -18,7 +18,9 @@ extern "C" double dispatch(const char *kernelName, uint8_t *output, const uint8_
     return gpuNaive(output, input, height, width, weights, radius);
   } else if (std::strcmp(kernelName, "const_cache") == 0){
     return gpuConstCache(output, input, height, width, weights, radius);
-  } else {
+  } else if (std::strcmp(kernelName, "shared") == 0){
+    return gpuSharedMem(output, input, height, width, weights, radius);
+  }else {
     return -1;
   }
 }
